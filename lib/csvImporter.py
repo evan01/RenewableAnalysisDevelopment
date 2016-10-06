@@ -5,17 +5,17 @@ import csv
 import re
 from tqdm import tqdm
 
-def readCsv(filename):
 
+def readCsv(filename):
     entries = []
 
     with open(filename, 'r') as csvfile:
         # Open up the file and read it
-        reader = csv.reader(csvfile,skipinitialspace=True)
+        reader = csv.reader(csvfile, skipinitialspace=True)
         numEntries = sum(1 for line in open(filename))
 
         # Create a progress bar
-        bar = tqdm(total=numEntries,desc="Reading the CSV file")
+        bar = tqdm(total=numEntries, desc="Reading the CSV file")
 
         # Loop through CSV and add classes to entries
         for row in reader:
@@ -31,12 +31,14 @@ def readCsv(filename):
 
     return entries
 
+
 def parseDateTime(dateTimeString):
-    date = re.findall("\d\d/\d\d/\d\d",dateTimeString)
-    time = re.findall("\d\d:\d\d",dateTimeString)
-    if len(date)==0 or len(time)==0:
+    date = re.findall("\d\d/\d\d/\d\d", dateTimeString)
+    time = re.findall("\d\d:\d\d", dateTimeString)
+    if len(date) == 0 or len(time) == 0:
         return None, None
-    return date,time
+    return date, time
+
 
 class entry:
     Date = ""
@@ -46,6 +48,7 @@ class entry:
 
 def main():
     readCsv('data/WindGenTotalLoadYTD_2016.csv')
+
 
 if __name__ == '__main__':
     main()
