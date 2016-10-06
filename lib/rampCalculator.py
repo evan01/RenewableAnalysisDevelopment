@@ -11,7 +11,7 @@ def getRamp():
     '''
     data = csvImporter.readCsv(".\data\WindGenTotalLoadYTD_2016.csv")
 
-    # Create the list of derivatives that we will return
+    # Create the list of derivatitves that we will return
     firstDerivatives = []
     ramppoint1 = (int(data[1].WindGenBPAControl) - int(data[0].WindGenBPAControl))/(5)
 
