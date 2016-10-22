@@ -25,7 +25,7 @@ def readCsv(filename):
             if ent.Date == None or ent.Time == None:
                 continue
             # Add the wind speed to the entry
-            ent.WindGenBPAControl = row[2]
+            ent.WindGenBPAControl = float(row[2])
             entries.append(ent)
             bar.update(1)
 
