@@ -69,6 +69,7 @@ def getSecondDerivatives(firstDerivatives):
     return secondDerivatives
 
 
+
 def main():
     data = csvImporter.readCsv("./data/WindGenTotalLoadYTD_2016.csv")
     firstDerivatives = getFirstDerivative(data)
