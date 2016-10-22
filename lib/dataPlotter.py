@@ -49,7 +49,8 @@ def plotCapacityRamp(data):
 
 
     plt.plot(capacity,ramp,"ro")
-    plt.axis([minCapVal,maxCapVal,minRampVal,maxRampVal])
+    # plt.axis([minCapVal,maxCapVal,minRampVal,maxRampVal])
+    plt.axis([minCapVal, maxCapVal, -40, 40])
 
     savePlot(plt)
 
