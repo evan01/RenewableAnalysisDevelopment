@@ -29,6 +29,7 @@ def readCsv(filename):
             entries.append(ent)
             bar.update(1)
 
+
     return entries
 
 
@@ -48,6 +49,9 @@ class entry:
 
 def main():
     readCsv('data/WindGenTotalLoadYTD_2016.csv')
+    list = [1,3,78,2,3]
+    for i in list:
+        print(i)
 
 
 if __name__ == '__main__':
