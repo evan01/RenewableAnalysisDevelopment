@@ -45,6 +45,8 @@ class entry:
     Date = ""
     Time = ""
     WindGenBPAControl = ""
+    firstDerivative = 0
+    secondDerivative = 0
 
 
 def main():

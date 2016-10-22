@@ -3,13 +3,15 @@
     that computes the ramp (gradient) of each data point
 '''
 import lib.csvImporter as csvImporter
+from tqdm import tqdm
+from lib.csvImporter import entry
 
 def getRamp():
     '''
     This function will analyze a large data set and return a list of the first derivatives
     for each point in the data set
     '''
-    data = csvImporter.readCsv(".\data\WindGenTotalLoadYTD_2016.csv")
+    data = csvImporter.readCsv("./data/WindGenTotalLoadYTD_2016.csv")
 
     # Create the list of deriva titves that we will return
     firstDerivatives = []
@@ -26,10 +28,34 @@ def getRamp():
 
     return firstDerivatives
 
+#This function will take in a list of data with (time , value) pairs and output a second list
+# Of the same size as the first list of the first derivatives
+def getFirstDerivative(data):
+    derivatives = []
+
+    dataWithoutFirstPoint = data[1:]
+    for p1,p2 in tqdm(zip(data,dataWithoutFirstPoint)):
+        #todo Ask the professor whether or not we should handle varying times and not just assume time
+        ramppoint = (int(p2.WindGenBPAControl) - int(p1.WindGenBPAControl)) / (5)
+
+        #Create an entry to put into a list of first derivatives
+        datap = entry()
+        datap.Date = p1.Date
+        datap.Time = p1.Time
+        datap.WindGenBPAControl = p1.WindGenBPAControl
+        datap.firstDerivative = ramppoint
+
+
+        derivatives.append(datap)
+
+    print("Hey")
+
+
 
 import numpy as np
 def main():
-    getRamp()
+    data = csvImporter.readCsv("./data/WindGenTotalLoadYTD_2016.csv")
+    getFirstDerivative(data)
 
 if __name__ == '__main__':
     main()
