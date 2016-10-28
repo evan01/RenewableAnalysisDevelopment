@@ -49,8 +49,10 @@ def plotCapacityRamp(data):
 
 
     plt.plot(capacity,ramp,"ro")
-    # plt.axis([minCapVal,maxCapVal,minRampVal,maxRampVal])
-    plt.axis([minCapVal, maxCapVal, -40, 40])
+    plt.axis([minCapVal,maxCapVal,minRampVal,maxRampVal])
+    # plt.axis([minCapVal, maxCapVal, -40, 40])
+    plt.ylabel("Ramp Value ")
+    plt.xlabel("Capacity")
 
     savePlot(plt)
 
@@ -60,6 +62,10 @@ def plotCapacityRamp(data):
 def main():
     data = csvImporter.readCsv("./data/WindGenTotalLoadYTD_2016.csv")
     data = r.getFirstDerivative(data)
+
+    #Shrink data by a lot
+    # data = data[:1000]
+
     plotCapacityRamp(data)
     print("e")
 
