@@ -6,7 +6,7 @@ import re
 from tqdm import tqdm
 
 
-def readCsv(filename):
+def readCsv(filename,debug = False):
     entries = []
 
     with open(filename, 'r') as csvfile:
@@ -18,6 +18,7 @@ def readCsv(filename):
         bar = tqdm(total=numEntries, desc="Reading the CSV file")
 
         # Loop through CSV and add classes to entries
+        count = 0
         for row in reader:
             ent = entry()
             ent.Date, ent.Time = parseDateTime(row[0])
@@ -28,7 +29,9 @@ def readCsv(filename):
             ent.WindGenBPAControl = float(row[2])
             entries.append(ent)
             bar.update(1)
-
+            if(debug and count>1000):
+                break
+            count+=1
 
     return entries
 
