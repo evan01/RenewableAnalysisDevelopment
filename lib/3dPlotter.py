@@ -20,7 +20,7 @@ def main1():
     ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
 
     fig.colorbar(surf, shrink=0.5, aspect=5)
-
+    print("This is actually a pretty cool theme")
     plt.show()
 
 def tutorial():

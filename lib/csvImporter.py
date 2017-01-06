@@ -4,7 +4,9 @@
 import csv
 import re
 from tqdm import tqdm
+import os
 
+filenames = ['./data/WindGenTotalLoadYTD_2011.xls']
 
 def readCsv(filename,debug = False):
     entries = []
@@ -20,13 +22,17 @@ def readCsv(filename,debug = False):
         # Loop through CSV and add classes to entries
         count = 0
         for row in reader:
-            ent = entry()
-            ent.Date, ent.Time = parseDateTime(row[0])
-            # Parse the time and date
-            if ent.Date == None or ent.Time == None:
+            try:
+                ent = entry()
+                ent.Date, ent.Time = parseDateTime(row[0])
+                # Parse the time and date
+                if ent.Date == None or ent.Time == None:
+                    continue
+                # Add the wind speed to the entry
+
+                ent.WindGenBPAControl = float(row[2])
+            except ValueError:
                 continue
-            # Add the wind speed to the entry
-            ent.WindGenBPAControl = float(row[2])
             entries.append(ent)
             bar.update(1)
             if(debug and count>1000):
@@ -35,6 +41,17 @@ def readCsv(filename,debug = False):
 
     return entries
 
+def readData():
+    data = []
+    for i,j,k in os.walk("./data"):
+        print("Reading a total of "+str(len(k)) + " files")
+        for file in k:
+            if file[-3:] == "csv":
+                d = readCsv("./data/"+file,False)
+                for entry in d:
+                    data.append(entry)
+
+    return data
 
 def parseDateTime(dateTimeString):
     date = re.findall("\d\d/\d\d/\d\d", dateTimeString)
@@ -53,7 +70,7 @@ class entry:
 
 
 def main():
-    readCsv('data/WindGenTotalLoadYTD_2016.csv')
+    readData()
 
 
 if __name__ == '__main__':

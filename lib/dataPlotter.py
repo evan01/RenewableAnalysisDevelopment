@@ -11,6 +11,11 @@ from matplotlib.ticker import LinearLocator, FormatStrFormatter
 import lib.csvImporter as csvImporter
 import lib.rampCalculator as r
 import numpy as np
+from matplotlib import pyplot as PLT
+from matplotlib import cm as CM
+from matplotlib import mlab as ML
+import random
+import numpy as NP
 
 DEBUG = False
 
@@ -188,20 +193,57 @@ def plot3DData(matrix,ramp,capacity,n):
 
     plt.show()
 
+def plotHeatMap(data):
+    ramp = []
+    capacity = []
+    for entry in tqdm(data, desc="Converting data"):
+        ramp.append(entry.firstDerivative)
+        capacity.append(entry.WindGenBPAControl)
+
+    n = 1e5
+    print("Meshgrid")
+    X,Y = np.meshgrid(capacity,ramp)
+    Z1 = ML.bivariate_normal(X, Y, 2, 2, 0, 0)
+    Z2 = ML.bivariate_normal(X, Y, 4, 1, 1, 1)
+    ZD = Z2 - Z1
+    x = X.ravel()
+    y = Y.ravel()
+    z = ZD.ravel()
+    gridsize = 30
+    PLT.subplot(111)
+    print("Placing items in bins")
+
+    # if 'bins=None', then color of each hexagon corresponds directly to its count
+    # 'C' is optional--it maps values to x-y coordinates; if 'C' is None (default) then
+    # the result is a pure 2D histogram
+
+    PLT.hexbin(x, y, C=z, gridsize=gridsize, cmap=CM.jet, bins=None)
+    PLT.axis([x.min(), x.max(), y.min(), y.max()])
+
+    print("Plott")
+    cb = PLT.colorbar()
+    cb.set_label('mean value')
+    PLT.show()
+
 
 def main():
-    data = csvImporter.readCsv("./data/WindGenTotalLoadYTD_2016.csv", debug=False)
+    data = csvImporter.readData()
     data = r.getFirstDerivative(data)
 
-    # Shrink data by a lot
-    data = data[:1000]
-    #initially n = 4
-    n = 16
 
-    # plotCapacityRamp(data)
-    matrix,rampPartition,capPartition = get3dData(data, n)
-    plot3DData(matrix,rampPartition,capPartition,n)
-    print("e")
+    # APPLy TRANSFORMATIONS ON THE DATA HERE
+    # Shrink data by a lot??
+    # data = data[:4000]
+    data = random.sample(data,5000)
+    #initially n = 4
+    n = 8
+
+    plotHeatMap(data)
+
+
+    # matrix,rampPartition,capPartition = get3dData(data, n)
+    # plot3DData(matrix,rampPartition,capPartition,n)
+    # print("e")
 
 
 if __name__ == '__main__':
