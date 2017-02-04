@@ -20,7 +20,7 @@ $scope.addFile = function(){
 		});
 }
 
-uploadfile: function (files, success,error){
+uploadfile: function (files,success,error){
 	
 	var url = 'file:///C:/Users/Julia/Documents/RenewableAnalysisDevelopment/Application/static/index.html';
 
@@ -28,7 +28,7 @@ uploadfile: function (files, success,error){
 	{
 		var fd = new FormData();
 
-		fd.append("file",, files[i]);
+		fd.append("file", files[i]);
 		$http.post(url, fd, {
 
 			withCredentials : false,
@@ -36,13 +36,13 @@ uploadfile: function (files, success,error){
 			headers : {
 				'Content-Type' : undefined
 			},
-			transforRequest : angular.identity
+			transformRequest : angular.identity
 		})
 		.success(function(data)
 		{
 			console.log(data);
 		})
-		.error(function(data))
+		.error(function(data)
 		{
 			console.log(data);
 		});
