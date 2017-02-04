@@ -1,1 +1,3 @@
-StatGen.js
+function sendData() {
+    console.log("Sup evan")
+}
