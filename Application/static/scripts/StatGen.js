@@ -21,7 +21,7 @@ $scope.addFile = function(){
 }
 
 uploadfile: function (files,success,error){
-	
+	console.log("Uploading the file");
 	var url = 'file:///C:/Users/Julia/Documents/RenewableAnalysisDevelopment/Application/static/index.html';
 
 	for(var i = 0; i < files.length; i++)
