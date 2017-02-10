@@ -29,7 +29,8 @@ uploadfile: function (files,success,error){
 		var fd = new FormData();
 
 		fd.append("file", files[i]);
-		$http.post(url, fd, {
+		$http.post(url, fd, 
+		{
 
 			withCredentials : false,
 
