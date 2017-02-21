@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Dropzone</title>
+    <script src="scripts/dropzone.js"></script>
+    <link rel="stylesheet" href="secondMain.css">
+    <script src="scripts/jquery-3.1.1.min.js"></script>
+
+    <script>
+        <!--This is the code that will launch the dropzone on startup-->
+        $(document).ready(function () {
+            console.log("Instantiated!")
+        });
+    </script>
+</head>
+<body>
+<div id="titleBar">
+    <h1 class="centered">Welcome to Stat Gen!</h1>
+</div>
+<div id="mainPage">
+    <div id="dropzone">
+        <form action="/upload" class="dropzone needsclick dz-clickable" id="demo-upload">
+
+            <div class="dz-message needsclick">
+                Please drop your CSV file/files here
+                <br>
+                <span class="note needsclick">The format of the CSV file should be</span>
+                <span class="note needsclick">
+                        Date/Time,Value(MGW)
+                        <br><br>
+                        YYYY-MM-DD, 1232
+	                    <br>
+                        YYYY-MM-DD, 1232
+                    </span>
+            </div>
+
+        </form>
+    </div>
+</div>
+
+
+</body>
+</html>=
