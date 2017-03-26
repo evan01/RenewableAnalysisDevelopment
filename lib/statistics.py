@@ -1,12 +1,16 @@
-import lib.pandasImporter as pi
 import numpy as np
 import pandas as pd
 import glob
 import os
 from tqdm import tqdm
-import matplotlib as plt
-from matplotlib import pyplot
+import matplotlib
+from matplotlib import pyplot as plt
+import matplotlib.mlab as BIV_NORM
+from mpl_toolkits.mplot3d import Axes3D
 from pandas import TimeGrouper
+import seaborn as sns
+import statsmodels.formula.api as sm
+import scipy
 
 '''
 Some useful tutorials for the time series statistics that we are calculating
@@ -15,179 +19,278 @@ http://www.johnwittenauer.net/a-simple-time-series-analysis-of-the-sp-500-index/
 '''
 defaultOptions = {
     'TimeSeries': False,
-    'StdDev': False,
-    'Ramp1': False,
+    'rampVCap': True,
     'Hist': False,
     'BvDist': False,
-    'Heatmap': True
+    'Heatmap': True,
+    'valLabel': None,
+    'dateLabel': None
 }
 
-defaultPath = "./data/"
-singlePath = "./data/WindGenTotalLoadYTD_2011_1.csv"
+statData = {
+    'rawData': None,
+    'data': None,
+    'ramp1': None,
+    'ramp2': None,
+    'mean': None,
+    'sig_X': None,
+    'sig_Y': None
+}
 
 
-def importCsv(path=None):
-    '''
-    This function will import either the default csv file in the example above or a specified file
-    :param path:
-    :return:
-    '''
-    print("Importing the csv")
-    data = None
-    if path is None:
+class StatGen:
+    label = ""
+    K = 3  # How we want to divide the standard deviation of our data set
+
+    def __init__(self, pathToCsv, options=defaultOptions):
+        self.label = options['valLabel']
+        self.options = options
+        self.stats = statData
+        self.importCsv(pathToCsv, options)
+        self.getStatistics()
+
+    def importCsv(self, path, opts):
+        '''
+        This function will import either the default csv file in the example above or a specified file
+        :param path:
+        :return:
+        '''
+        print("Importing the csv")
         # Then read default path, will read all files in data directory, using the BP dataset
-        fields = ['Date/Time', 'TOTAL WIND GENERATION  IN BPA CONTROL AREA (MW; SCADA 79687)']
+
         # Parser for the date time fields
         parser = lambda date: pd.datetime.strptime(date, '%m/%d/%y %H:%M')
         data = pd.read_csv(
-            singlePath,
+            path,
             low_memory=False,
             header=0,
             skip_blank_lines=True,
             infer_datetime_format=True,
-            parse_dates=['Date/Time'],
-            usecols=fields,
+            parse_dates=[opts['dateLabel']],
+            usecols=[opts['dateLabel'], self.label],
             date_parser=parser,
             na_filter=True,
             verbose=True
         )
-        # allCSVFiles = glob.glob(os.path.join(defaultPath,"*.csv"))
-        # df_from_file = (pd.read_csv(f,parse_dates=['Date/Time']) for f in tqdm(allCSVFiles,desc="Reading the CSV files"))
-        # data = pd.concat(df_from_file,ignore_index=False)
 
-    else:
-        print("read a single path")
-    # Then dro
-    data = convertDataToTimeSeies(data)
-    return data
+        # Then convert the data to a propper pandas time series
+        data.dropna()
+        data[opts['dateLabel']] = pd.to_datetime(data[opts['dateLabel']])
+        data.index = data[opts['dateLabel']]
+        del data[opts['dateLabel']]
+        self.stats['rawData'] = data
+
+    def getStatistics(self):
+        data = self.stats['rawData']
+
+        # First thing to do is to remove the biggest outliers from the data set
+        # Keep everything within 4 standard deviations
+        # Also keep the x values for some regression, (AKA the CAP values)
+        data = data[~((data - data.mean()).abs() > 4 * data.std())]
+        data.dropna()
+        x = data[self.label]
+
+        # Then get the ramp data, make 1 master pandas dataframe
+        ramp = data.diff().dropna()
+        y = ramp.as_matrix()
+        ramp = ramp.rename(columns={self.options['valLabel']: 'ramp'})
+        data['ramp'] = ramp
+
+        # Run the clustering algorithm on the data, to get the grid distribution
+        self.kdTree(data, self.K)
+
+        self.stats['data'] = data
+        self.stats['ramp'] = ramp
+
+    def kdTree(self, data, k):
+        """
+        This is an implementation of the kd-tree algorithm, will aid in clustering our data into a better model
+        :param data: Pandas Dataframe
+        :return: 
+        """
+
+        x = data[self.label]
+        y = data['ramp']
+        tree_y = self.createKdTree(x, 3, 5)  # 3 standard devs, 5 partitions per standard dev
+        tree_x = self.createKdTree(y, 3, 5)
+
+    def createKdTree(self, dataset, stds, k):
+        """
+        This function will build a kd tree that partitions the data set passed in by 
+        standard deviation
+        :param dataset: 
+        :param stds: 
+        :param k: 
+        :return: 
+        """
+
+        # Get the mean and the standard deviation of the dataset
+        std = int(dataset.std())
+        mean = int(dataset.mean())
+
+        # Important to then get the grid number for each datapoint...
+        grids = stds * k * 2
+
+        class Node:
+            def __init__(self, val, parent=None):
+                self.val = val
+                self.parent = parent
+                self.children = []
+                self.sigmaNum = -1
+                self.binNum = -1
+                self.gridNum = -1
+
+        class kdTree:
+            def __init__(self, Node):
+                self.root = Node
+
+        # Do the standard deviations first, 3 standard deviations is enough?
+        root = Node(mean)
+        for i in range(1, stds + 1):
+            Lval = mean - i * std
+            Rval = mean + i * std
+            NodeL, NodeR = Node(Lval, root), Node(Rval, root)
+            root.children.append(NodeL)
+            root.children.append(NodeR)
+        root.children = sorted(root.children, key=lambda x: x.val)
+
+        # Then within each standard deviation, we have k leaf nodes
+        for i in range(len(root.children)):
+            child = root.children[i]
+            for j in range(k):
+                kVal = child.val + int(j * std / k)
+                nd = Node(kVal, child)
+                nd.binNum = j
+                nd.sigmaNum = i
+                child.children.append(nd)
+
+        print("k")
+
+    def plotTimeSeries(self, data):
+        data.plot()
+        plt.savefig("./plots/originalSeries.png")
+
+    def plotHistogram(self, data):
+        data.hist()
+        plt.savefig("./plots/histogram.png")
+
+    def plotRampVCapacity(self, data):
+        """
+        This function plots a number of figures showing the relationships between ramp and capacity
+        :param data:
+        :return:
+        """
+        # opts = self.options
+        # First thing to do is to get rid of the na vals, they seem to pop up often
+        data.dropna(inplace=True, how='any')
+
+        x = data[self.label]
+        y = data['ramp']
+
+        x = x.as_matrix()
+        y = y.as_matrix()
+
+        # There are multiple different kinds of plots for ramp and capacity
+        sns.jointplot(x=self.label, y='ramp', data=data)  # Standard scatter
+        sns.jointplot(x=self.label, y='ramp', data=data, kind="kde", ylim={-80, 80}, xlim={0, 1500},
+                      color='r')  # A kind of heatmap
+        sns.jointplot(x=self.label, y='ramp', data=data, kind='hex', ylim={-80, 80}, xlim={0, 1500},
+                      color='r')  # Hex bin plot
+
+        # Try some parametrization
+        parametrized = sns.jointplot(x=self.label, y='ramp', data=data)
+        parametrized.plot_marginals(sns.distplot)
+
+        # Try to draw hills
+        g = sns.JointGrid(x=self.label, y='ramp', data=data, ylim=(-80, 80), xlim=(0, 1000), size=5, ratio=2)
+        g = g.plot_joint(sns.kdeplot, cmap="Reds_d")
+        g = g.plot_marginals(sns.kdeplot, color='r', shade=True)
+
+        # Try to draw a simple kde plot...
+        sns.kdeplot(x, y, ylim={-80, 80})  # A hill like contour plot
+
+        sns.plt.show()
+        print("done")
+
+    def getBivariateDistribution(self, data, GRID):
+        """
+        This will get the bivariate distribution of the data set and plot the output
+        :param data:
+        :param GRID:
+        :return:
+        """
+        # Might be worthwhile to remove outliers... hmm kmeans might help with this
+        data.dropna(inplace=True, how='any')
+        x = data[self.label].as_matrix()
+        y = data['ramp'].as_matrix()
+
+        # Params to find using data
+        Expectation_x = x.mean()
+        Expectation_y = y.mean()
+
+        sig_x = int(x.var() ** .5)
+        sig_y = int(y.var() ** .5)
+
+        # This is to give to the pdf function
+        print("Applying the binning, meshgrid function")
+        X, Y = np.meshgrid(x, y)
+        pos = np.empty(X.shape + (2,))
+        pos[:, :, 0] = X;
+        pos[:, :, 1] = Y
+
+        print("Aquiring normal distribution")
+        Z = BIV_NORM.bivariate_normal(X, Y, sig_x, sig_y, Expectation_x, Expectation_y)
+
+        print("Plot the distribution")
+
+        # Make a 3D plot
+        fig = plt.figure()
+        ax = fig.gca(projection='3d')
+        ax.plot_surface(X, Y, Z, cmap='viridis', linewidth=0)
+        ax.set_xlabel('X axis')
+        ax.set_ylabel('Y axis')
+        ax.set_zlabel('Z axis')
+        plt.show()
 
 
-def convertDataToTimeSeies(data):
-    '''
-    This function will convert the data that we have to the time series
-    :param data:
-    :return:
-    '''
-    # Make sure that the dates are date time objects
-    data['Date/Time'] = pd.to_datetime(data['Date/Time'])
-    # Set the date time as the index, delete the old column
-    data.index = data['Date/Time']
-    del data['Date/Time']
+        # Let scipy.stats do the multivariate normal distribution heavy lifting, pass in covariance matrix
 
-    return data
+    def plotStatistics(self):
+        """
+        This function will take in a dict of statics and plot all of them
+        Each kind of statistic has a different output
+        :param data:
+        :param options:
+        :return:
+        """
+        '''
+            For each kind of option we need to generate a diferent plot
+            ALSO WHY NO SWITCH STATEMENTS in python... :/
+            We're using a python dictionary to access the different stats and series information,
+            it's the most mem. efficient
+        '''
+        options = self.options
+        series = self.stats['rawData']
+        data = self.stats['data']
+        ramp1 = self.stats['ramp1']
 
+        # self.plotTimeSeries(series)
 
-def getStatistics(data, options=defaultOptions):
-    print("Computing the standard deviation")
-    stdDev = data.std()
-    print("Getting Ramp1")
-    ramp1 = data.diff()
-    print("Getting Ramp2")
-    ramp2 = ramp1.diff()
-    print("")
+        # self.plotRampVCapacity(data)
 
-    return data
+        self.getBivariateDistribution(data, 60)
 
-
-def plotTimeSeries(data):
-    data.plot()
-    pyplot.savefig("./plots/originalSeries.png")
-
-    # fig.saveFig('rawSeries.png')
-    # data.savefig('pandasSeries.png')
-
-
-def plotHistogram(data):
-    data.hist()
-    pyplot.savefig("./plots/histogram.png")
-
-
-def plotRampVCapacity(data):
-    """
-
-    :param data:
-    :return:
-    """
-    # First get the ramp data
-    ramp = data.diff()
-
-    # then join the capacity and ramp data together
-    # rampCapData = pd.concat([data,ramp],axis=1)
-    ramp, cap = ramp.as_matrix(), data.as_matrix()
-    scat = pyplot.scatter(cap, ramp)
-    pyplot.plot()
-    pyplot.savefig("./plots/rampCap.png")
-    print("done")
-
-
-def getBivariateDistribution(data):
-    pass
-
-
-def plotHeatmap(data):
-    # Drop the Nan Values
-    data = data.dropna()
-
-    # First get the ramp data
-    ramp = data.diff()
-
-    # Flatten matrices
-    ramp = ramp.as_matrix()[1:].flatten()
-    data = data.as_matrix()[1:].flatten()
-    heatmap, xedges, yedges = np.histogram2d(data, ramp, bins=[32, 32])
-    heatmap = heatmap.T
-    pyplot.imshow(heatmap, interpolation='nearest', origin='low', extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]])
-    # pyplot.imshow(heatmap, interpolation='nearest', origin='low', extent=[xedges[0], xedges[-1], 10, -10])
-    pyplot.plot()
-    pyplot.savefig("./plots/heatmap.png")
-
-
-def plotStatistics(data, options=defaultOptions):
-    """
-    This function will take in a dict of statics and plot all of them
-    Each kind of statistic has a different output
-    :param data:
-    :param options:
-    :return:
-    """
-    '''
-        For each kind of option we need to generate a diferent plot
-        ALSO WHY NO SWITCH STATEMENTS in python... :/
-    '''
-    if options['TimeSeries']:
-        plotTimeSeries(data)
-    if options['Hist']:
-        plotHistogram(data)
-    if options['StdDev']:
-        print(data.std())  # Seems kinda redundant...
-    if options['Ramp1']:
-        plotRampVCapacity(data)
-    if options['Heatmap']:
-        plotHeatmap(data)
-    if options['BvDist']:
-        getBivariateDistribution(data)
-
-    print("Done computing all the statistics")
-
-
-def getStatisticalData(pathToCSVUpload):
-    '''
-    This function will return the JSON statistics of all of the statistical data that's required
-    :param pathToCSVUpload: the string path of the file that was uploaded to the server for processing
-    :return: a python dictionary that contains all of the desired statistical data
-    '''
-
-
-def main():
-    # First import that data file as a time series
-    timeSeries = importCsv()
-
-    # Then get the main statistics
-    stats = getStatistics(timeSeries)
-
-    # Then plot the statistics
-    plotStatistics(stats)
+        print("Done plotting all the statistics")
 
 
 if __name__ == '__main__':
-    main()
+    '''
+        The only thing that the front end needs to provide is the following information...
+    '''
+    pathToCSV = "./data/WindGenTotalLoadYTD_2011_1.csv"
+    opts = defaultOptions
+    opts['valLabel'] = 'TOTAL WIND GENERATION  IN BPA CONTROL AREA (MW; SCADA 79687)'
+    opts['dateLabel'] = 'Date/Time'
+
+    s = StatGen(pathToCSV, opts)
+    s.plotStatistics()
