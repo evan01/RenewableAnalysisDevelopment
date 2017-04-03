@@ -11,6 +11,7 @@ from pandas import TimeGrouper
 import seaborn as sns
 import statsmodels.formula.api as sm
 import scipy
+import argparse
 
 '''
 Some useful tutorials for the time series statistics that we are calculating
@@ -30,11 +31,12 @@ defaultOptions = {
 statData = {
     'rawData': None,
     'data': None,
-    'ramp1': None,
-    'ramp2': None,
-    'mean': None,
-    'sig_X': None,
-    'sig_Y': None
+    'cap_series': None,
+    'ramp_series': None,
+    'x': None,
+    'y': None,
+    'summary_x': None,
+    'summary_y': None
 }
 
 
@@ -44,10 +46,12 @@ class StatGen:
 
     def __init__(self, pathToCsv, options=defaultOptions):
         self.label = options['valLabel']
+        self.timeLabel = options['dateLabel']
         self.options = options
         self.stats = statData
         self.importCsv(pathToCsv, options)
         self.getStatistics()
+        self.statAnalysis()
 
     def importCsv(self, path, opts):
         '''
@@ -66,19 +70,25 @@ class StatGen:
             header=0,
             skip_blank_lines=True,
             infer_datetime_format=True,
-            parse_dates=[opts['dateLabel']],
-            usecols=[opts['dateLabel'], self.label],
+            parse_dates=[self.timeLabel],
+            usecols=[self.timeLabel, self.label],
             date_parser=parser,
             na_filter=True,
             verbose=True
         )
 
         # Then convert the data to a propper pandas time series
-        data.dropna()
-        data[opts['dateLabel']] = pd.to_datetime(data[opts['dateLabel']])
-        data.index = data[opts['dateLabel']]
-        del data[opts['dateLabel']]
-        self.stats['rawData'] = data
+        # start by getting the ramp values and dropping bad values and the normal data
+        data['ramp'] = data[self.label].diff()
+        data = data[np.isfinite(data['ramp'])]
+        data = data[np.isfinite(data[self.label])]
+        self.stats['rawData'] = data.copy()
+
+        # Then try converting this into a propper time series
+        data.index = data[self.timeLabel]
+        del data[self.timeLabel]
+
+        self.stats['data'] = data
 
     def getStatistics(self):
         data = self.stats['rawData']
@@ -86,211 +96,149 @@ class StatGen:
         # First thing to do is to remove the biggest outliers from the data set
         # Keep everything within 4 standard deviations
         # Also keep the x values for some regression, (AKA the CAP values)
-        data = data[~((data - data.mean()).abs() > 4 * data.std())]
-        data.dropna()
-        x = data[self.label]
-
-        # Then get the ramp data, make 1 master pandas dataframe
-        ramp = data.diff().dropna()
+        # data = data[~((data - data.mean()).abs() > 4 * data.std())]
+        # data = data.dropna()
+        # x = data[self.label]
+        # x = x.dropna()
+        # x = x.as_matrix()
+        #
+        # # Then get the ramp data, make 1 master pandas dataframe
+        # ramp = data.diff().dropna()
+        # y = ramp.as_matrix().T[0]
+        # ramp = ramp.rename(columns={self.options['valLabel']: 'ramp'})
+        # data['ramp'] = ramp
+        # data = data.dropna()
+        ramp = data['ramp']
+        x = data[self.label].as_matrix()
         y = ramp.as_matrix()
-        ramp = ramp.rename(columns={self.options['valLabel']: 'ramp'})
-        data['ramp'] = ramp
 
-        # Run the clustering algorithm on the data, to get the grid distribution
-        self.kdTree(data, self.K)
-
+        #Append the cap and ramp data to the summary of all the data
         self.stats['data'] = data
         self.stats['ramp'] = ramp
+        self.stats['x'] = x
+        self.stats['y'] = y
 
-    def kdTree(self, data, k):
+        # Then get the summary stats
+        summaryCap = data['ramp'].describe()
+        summaryRamp = ramp.describe()
+        self.stats['summary_x'] = summaryCap
+        self.stats['summary_y'] = summaryRamp
+
+    def statAnalysis(self):
         """
-        This is an implementation of the kd-tree algorithm, will aid in clustering our data into a better model
-        :param data: Pandas Dataframe
+        This function is a caller of various statistical analysis functions on the data already entered
         :return: 
         """
 
-        x = data[self.label]
-        y = data['ramp']
-        tree_y = self.createKdTree(x, 3, 5)  # 3 standard devs, 5 partitions per standard dev
-        tree_x = self.createKdTree(y, 3, 5)
+        x = self.stats['x']
+        y = self.stats['y']
+        series = self.stats['series']
+        rawData = self.stats['rawData']
+        data = self.stats['data']
 
-    def createKdTree(self, dataset, stds, k):
-        """
-        This function will build a kd tree that partitions the data set passed in by 
-        standard deviation
-        :param dataset: 
-        :param stds: 
-        :param k: 
-        :return: 
-        """
+        self.plotTimeSeries(rawData)
 
-        # Get the mean and the standard deviation of the dataset
-        std = int(dataset.std())
-        mean = int(dataset.mean())
+        self.plotCapacityStatistics(x)
 
-        # Important to then get the grid number for each datapoint...
-        grids = stds * k * 2
+        self.plotRampStatistics(y)
 
-        class Node:
-            def __init__(self, val, parent=None):
-                self.val = val
-                self.parent = parent
-                self.children = []
-                self.sigmaNum = -1
-                self.binNum = -1
-                self.gridNum = -1
+        self.plotJointRampCapStats(x, y)
 
-        class kdTree:
-            def __init__(self, Node):
-                self.root = Node
+        self.plotGaussianRegression(x, y)
 
-        # Do the standard deviations first, 3 standard deviations is enough?
-        root = Node(mean)
-        for i in range(1, stds + 1):
-            Lval = mean - i * std
-            Rval = mean + i * std
-            NodeL, NodeR = Node(Lval, root), Node(Rval, root)
-            root.children.append(NodeL)
-            root.children.append(NodeR)
-        root.children = sorted(root.children, key=lambda x: x.val)
+        self.plotPolynomialRegression(x, y)
 
-        # Then within each standard deviation, we have k leaf nodes
-        for i in range(len(root.children)):
-            child = root.children[i]
-            for j in range(k):
-                kVal = child.val + int(j * std / k)
-                nd = Node(kVal, child)
-                nd.binNum = j
-                nd.sigmaNum = i
-                child.children.append(nd)
-
-        print("k")
+        self.plotLinearRegression(x, y)
 
     def plotTimeSeries(self, data):
-        data.plot()
-        plt.savefig("./plots/originalSeries.png")
-
-    def plotHistogram(self, data):
-        data.hist()
-        plt.savefig("./plots/histogram.png")
-
-    def plotRampVCapacity(self, data):
         """
-        This function plots a number of figures showing the relationships between ramp and capacity
-        :param data:
-        :return:
+        This function takes in a pandas time series dataframe and then plots the output
+        :param data: 
+        :return: 
         """
-        # opts = self.options
-        # First thing to do is to get rid of the na vals, they seem to pop up often
-        data.dropna(inplace=True, how='any')
+        # s = data.set_index('Date/Time')[self.label]
+        # s.plot()
+        # plt.show()
+        sns.tsplot(data, time=self.timeLabel, unit=self.label, estimator=np.median)
+        # sns.tsplot(data,time=self.timeLabel,value='ramp')
+        # print("done")
 
-        x = data[self.label]
-        y = data['ramp']
-
-        x = x.as_matrix()
-        y = y.as_matrix()
-
-        # There are multiple different kinds of plots for ramp and capacity
-        sns.jointplot(x=self.label, y='ramp', data=data)  # Standard scatter
-        sns.jointplot(x=self.label, y='ramp', data=data, kind="kde", ylim={-80, 80}, xlim={0, 1500},
-                      color='r')  # A kind of heatmap
-        sns.jointplot(x=self.label, y='ramp', data=data, kind='hex', ylim={-80, 80}, xlim={0, 1500},
-                      color='r')  # Hex bin plot
-
-        # Try some parametrization
-        parametrized = sns.jointplot(x=self.label, y='ramp', data=data)
-        parametrized.plot_marginals(sns.distplot)
-
-        # Try to draw hills
-        g = sns.JointGrid(x=self.label, y='ramp', data=data, ylim=(-80, 80), xlim=(0, 1000), size=5, ratio=2)
-        g = g.plot_joint(sns.kdeplot, cmap="Reds_d")
-        g = g.plot_marginals(sns.kdeplot, color='r', shade=True)
-
-        # Try to draw a simple kde plot...
-        sns.kdeplot(x, y, ylim={-80, 80})  # A hill like contour plot
-
-        sns.plt.show()
-        print("done")
-
-    def getBivariateDistribution(self, data, GRID):
+    def plotCapacityStatistics(self,x):
         """
-        This will get the bivariate distribution of the data set and plot the output
-        :param data:
-        :param GRID:
-        :return:
+        This function takes in a list of capacity values, and generates relevant stats about it
+        :param x: 
+        :return: 
         """
-        # Might be worthwhile to remove outliers... hmm kmeans might help with this
-        data.dropna(inplace=True, how='any')
-        x = data[self.label].as_matrix()
-        y = data['ramp'].as_matrix()
+        pass
 
-        # Params to find using data
-        Expectation_x = x.mean()
-        Expectation_y = y.mean()
-
-        sig_x = int(x.var() ** .5)
-        sig_y = int(y.var() ** .5)
-
-        # This is to give to the pdf function
-        print("Applying the binning, meshgrid function")
-        X, Y = np.meshgrid(x, y)
-        pos = np.empty(X.shape + (2,))
-        pos[:, :, 0] = X;
-        pos[:, :, 1] = Y
-
-        print("Aquiring normal distribution")
-        Z = BIV_NORM.bivariate_normal(X, Y, sig_x, sig_y, Expectation_x, Expectation_y)
-
-        print("Plot the distribution")
-
-        # Make a 3D plot
-        fig = plt.figure()
-        ax = fig.gca(projection='3d')
-        ax.plot_surface(X, Y, Z, cmap='viridis', linewidth=0)
-        ax.set_xlabel('X axis')
-        ax.set_ylabel('Y axis')
-        ax.set_zlabel('Z axis')
-        plt.show()
-
-
-        # Let scipy.stats do the multivariate normal distribution heavy lifting, pass in covariance matrix
-
-    def plotStatistics(self):
+    def plotRampStatistics(self,y):
         """
-        This function will take in a dict of statics and plot all of them
-        Each kind of statistic has a different output
-        :param data:
-        :param options:
-        :return:
+        This function takes in a list of ramp values and generaties relevant stats about it
+        :param y: 
+        :return: 
         """
-        '''
-            For each kind of option we need to generate a diferent plot
-            ALSO WHY NO SWITCH STATEMENTS in python... :/
-            We're using a python dictionary to access the different stats and series information,
-            it's the most mem. efficient
-        '''
-        options = self.options
-        series = self.stats['rawData']
-        data = self.stats['data']
-        ramp1 = self.stats['ramp1']
+        pass
 
-        # self.plotTimeSeries(series)
+    def plotJointRampCapStats(self, x, y):
+        """
+        Thi function takes both ramp and capacity values at instances in time, and then makes judgements about them
+        :param x: 
+        :param y: 
+        :return: 
+        """
+        pass
 
-        # self.plotRampVCapacity(data)
+    def plotGaussianRegression(self, x, y):
+        """
+        This function takes in ramp and capacity values and then performs the relevant regressions
+        :param x: 
+        :param y: 
+        :return: 
+        """
+        pass
 
-        self.getBivariateDistribution(data, 60)
+    def plotPolynomialRegression(self, x, y):
+        """
+        This function takes in ramp and capacity values in instances in time and then tries to find the relationship
+        using polynomial regression
+        :param x: 
+        :param y: 
+        :return: 
+        """
+        pass
 
-        print("Done plotting all the statistics")
+    def plotLinearRegression(self, x, y):
+        """
+        This function takes in ramp and capacity values in instances in time and then tries to find the relationship
+        using linear regression
+        :param x: 
+        :param y: 
+        :return: 
+        """
+        pass
 
 
-if __name__ == '__main__':
+def main():
     '''
         The only thing that the front end needs to provide is the following information...
     '''
+    # Command line program so not as much effort is needed
+    # parser = argparse.ArgumentParser(
+    #     description="Generate Renewable Energy Statistics",
+    # )
+    # parser.add_argument('-p',help='the path to the csv file')
+    # parser.add_argument('-d',help='The header of the Date/Time field in the CSV File')
+    # parser.add_argument('-v',help='The header of the Capacity field in the CSV File')
+    # args = parser.parse_args()
+
     pathToCSV = "./data/WindGenTotalLoadYTD_2011_1.csv"
     opts = defaultOptions
     opts['valLabel'] = 'TOTAL WIND GENERATION  IN BPA CONTROL AREA (MW; SCADA 79687)'
     opts['dateLabel'] = 'Date/Time'
 
     s = StatGen(pathToCSV, opts)
-    s.plotStatistics()
+    # s.plotStatistics()
+
+
+if __name__ == '__main__':
+    main()

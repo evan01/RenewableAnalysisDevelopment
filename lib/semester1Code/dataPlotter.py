@@ -223,6 +223,74 @@ def plotHeatMap(data):
     PLT.show()
 
 
+def getBivariateDistribution(self, data, GRID):
+    """
+    This will get the bivariate distribution of the data set and plot the output
+    :param data:
+    :param GRID:
+    :return:
+    """
+    # Might be worthwhile to remove outliers... hmm kmeans might help with this
+    data.dropna(inplace=True, how='any')
+    x = data[self.label].as_matrix()
+    y = data['ramp'].as_matrix()
+
+    # Params to find using data
+    Expectation_x = x.mean()
+    Expectation_y = y.mean()
+
+    sig_x = int(x.var() ** .5)
+    sig_y = int(y.var() ** .5)
+
+    # This is to give to the pdf function
+    print("Applying the binning, meshgrid function")
+    X, Y = np.meshgrid(x, y)
+    pos = np.empty(X.shape + (2,))
+    pos[:, :, 0] = X;
+    pos[:, :, 1] = Y
+
+    print("Aquiring normal distribution")
+    # Z = BIV_NORM.bivariate_normal(X, Y, sig_x, sig_y, Expectation_x, Expectation_y)
+
+    print("Plot the distribution")
+
+    # Make a 3D plot
+    fig = plt.figure()
+    ax = fig.gca(projection='3d')
+    ax.plot_surface(X, Y, Z, cmap='viridis', linewidth=0)
+    ax.set_xlabel('X axis')
+    ax.set_ylabel('Y axis')
+    ax.set_zlabel('Z axis')
+    plt.show()
+
+
+def plotStatistics(self):
+    """
+    This function will take in a dict of statics and plot all of them
+    Each kind of statistic has a different output
+    :param data:
+    :param options:
+    :return:
+    """
+    '''
+        For each kind of option we need to generate a diferent plot
+        ALSO WHY NO SWITCH STATEMENTS in python... :/
+        We're using a python dictionary to access the different stats and series information,
+        it's the most mem. efficient
+    '''
+    options = self.options
+    series = self.stats['rawData']
+    data = self.stats['data']
+    ramp1 = self.stats['ramp1']
+
+    # self.plotTimeSeries(series)
+
+    # self.plotRampVCapacity(data)
+
+    self.getBivariateDistribution(data, 60)
+
+    print("Done plotting all the statistics")
+
 def main():
     data = csvImporter.readData()
     data = r.getFirstDerivative(data)
