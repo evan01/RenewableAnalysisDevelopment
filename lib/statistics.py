@@ -139,7 +139,10 @@ class StatGen:
         self.plotRampStatistics(y, summaryRamp)
 
         print("\tplotting joint ramp/cap series")
-        self.plotJointRampCapStats(x, y, data)
+        # self.plotJointRampCapStats(x, y, data)
+
+        print("\tPlot the 2d histogram")
+        self.plot2dHistogram(x, y)
 
         print("\tplotting 3d hist")
         self.plot3dHistogram(x, y)
@@ -253,6 +256,25 @@ class StatGen:
         i.savefig(self.outDir + "jointKde2.png")
         j.savefig(self.outDir + "jointKde3.png")
 
+    def plot2dHistogram(self, x, y):
+        # Plot data
+        fig1 = plt.figure()
+        plt.plot(x, y, '.r')
+        plt.xlabel('x')
+        plt.ylabel('y')
+
+        # Plot 2D histogram using pcolor
+        # todo, find a way to not the axis values be hard coded
+        fig2 = plt.figure()
+        plt.hexbin(x, y, cmap=plt.cm.YlOrRd_r, gridsize=2400)
+        fig2.suptitle('2D histogram of Ramp and Capacity')
+        cb = plt.colorbar()
+        cb.set_label('counts')
+        plt.axis([0, 30, -5, 5])
+
+        fig1.savefig(self.outDir + "2dHist_noheat.png")
+        fig2.savefig(self.outDir + "2dHist.png")
+
     def plot3dHistogram(self, x, y):
         '''
         Please note that the majority of code below was taken from 
@@ -264,9 +286,6 @@ class StatGen:
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
 
-        # This example actually counts the number of unique elements.
-        binsOne = sorted(set(x))
-        binsTwo = sorted(set(y))
         # Just change binsOne and binsTwo to lists.
         hist, xedges, yedges = np.histogram2d(x, y, bins=[8, 8])
 
