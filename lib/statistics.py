@@ -25,7 +25,8 @@ defaultOptions = {
     'BvDist': False,
     'Heatmap': True,
     'valLabel': None,
-    'dateLabel': None
+    'dateLabel': None,
+    'outDir': None
 }
 
 statData = {
@@ -47,6 +48,7 @@ class StatGen:
     def __init__(self, pathToCsv, options=defaultOptions):
         self.label = options['valLabel']
         self.timeLabel = options['dateLabel']
+        self.outDir = options['outDir']
         self.options = options
         self.stats = statData
         self.importCsv(pathToCsv, options)
@@ -91,36 +93,21 @@ class StatGen:
         self.stats['data'] = data
 
     def getStatistics(self):
+        # Get the Cap, Ramp and Summary Stats we're interested in
         data = self.stats['rawData']
-
-        # First thing to do is to remove the biggest outliers from the data set
-        # Keep everything within 4 standard deviations
-        # Also keep the x values for some regression, (AKA the CAP values)
-        # data = data[~((data - data.mean()).abs() > 4 * data.std())]
-        # data = data.dropna()
-        # x = data[self.label]
-        # x = x.dropna()
-        # x = x.as_matrix()
-        #
-        # # Then get the ramp data, make 1 master pandas dataframe
-        # ramp = data.diff().dropna()
-        # y = ramp.as_matrix().T[0]
-        # ramp = ramp.rename(columns={self.options['valLabel']: 'ramp'})
-        # data['ramp'] = ramp
-        # data = data.dropna()
+        cap = data[self.label]
         ramp = data['ramp']
         x = data[self.label].as_matrix()
         y = ramp.as_matrix()
+        summaryCap = data[self.label].describe()
+        summaryRamp = data['ramp'].describe()
 
-        #Append the cap and ramp data to the summary of all the data
+        # Store this data to the object
         self.stats['data'] = data
         self.stats['ramp'] = ramp
+        self.stats['cap'] = cap
         self.stats['x'] = x
         self.stats['y'] = y
-
-        # Then get the summary stats
-        summaryCap = data['ramp'].describe()
-        summaryRamp = ramp.describe()
         self.stats['summary_x'] = summaryCap
         self.stats['summary_y'] = summaryRamp
 
@@ -129,64 +116,178 @@ class StatGen:
         This function is a caller of various statistical analysis functions on the data already entered
         :return: 
         """
-
+        # Store this data to the object
+        data = self.stats['data']
+        ramp = self.stats['ramp']
+        cap = self.stats['cap']
+        times = data['Date/Time']
         x = self.stats['x']
         y = self.stats['y']
-        series = self.stats['series']
-        rawData = self.stats['rawData']
-        data = self.stats['data']
+        summaryCap = self.stats['summary_x']
+        summaryRamp = self.stats['summary_y']
 
-        self.plotTimeSeries(rawData)
+        print("\tplotting cap series")
+        self.plotCapacitySeries(times, x)
 
-        self.plotCapacityStatistics(x)
+        print("\tplotting ramp series")
+        self.plotRampSeries(times, y)
 
-        self.plotRampStatistics(y)
+        print("\tplotting cap stats")
+        self.plotCapacityStatistics(x, summaryCap)
 
-        self.plotJointRampCapStats(x, y)
+        print("\tplotting ramp series")
+        self.plotRampStatistics(y, summaryRamp)
 
+        print("\tplotting joint ramp/cap series")
+        self.plotJointRampCapStats(x, y, data)
+
+        print("\tplotting 3d hist")
+        self.plot3dHistogram(x, y)
+
+        print("\tgaus reg")
         self.plotGaussianRegression(x, y)
 
+        print("\tgaus reg")
         self.plotPolynomialRegression(x, y)
 
+        print("\tlinear reg")
         self.plotLinearRegression(x, y)
 
-    def plotTimeSeries(self, data):
-        """
-        This function takes in a pandas time series dataframe and then plots the output
-        :param data: 
-        :return: 
-        """
-        # s = data.set_index('Date/Time')[self.label]
-        # s.plot()
-        # plt.show()
-        sns.tsplot(data, time=self.timeLabel, unit=self.label, estimator=np.median)
-        # sns.tsplot(data,time=self.timeLabel,value='ramp')
-        # print("done")
+    def plotCapacitySeries(self, times, x):
+        fig = plt.figure()
+        fig.suptitle('Power Generation Time Series')
+        ax = fig.add_subplot(111)
+        fig.subplots_adjust(top=0.85)
+        ax.set_xlabel(self.timeLabel)
+        ax.set_ylabel(self.label)
+        plt.plot(times, x)
+        plt.savefig(self.outDir + "capSeries.png")
 
-    def plotCapacityStatistics(self,x):
+    def plotRampSeries(self, times, y):
+        fig = plt.figure()
+        fig.suptitle('Ramp (Derivative) of Power Gen Time Series')
+        ax = fig.add_subplot(111)
+        fig.subplots_adjust(top=0.85)
+        ax.set_xlabel(self.timeLabel)
+        ax.set_ylabel('Ramp')
+        plt.plot(times, y)
+        plt.savefig(self.outDir + "rampSeries.png")
+
+    def plotCapacityStatistics(self, x, capSum):
         """
         This function takes in a list of capacity values, and generates relevant stats about it
         :param x: 
         :return: 
         """
-        pass
+        mu = capSum['mean']
+        sigma = capSum['std']
+        count = capSum['count']
+        fig = plt.figure()
+        fig.suptitle('Capacity Analysis and Statistics (mu=' + str(int(mu)) + " sig=" + str(int(sigma)) + ")")
+        ax = fig.add_subplot(111)
+        fig.subplots_adjust(top=0.85)
+        ax.set_xlabel(self.label)
+        ax.set_ylabel('Frequency')
+        n, bins, p = plt.hist(x, 80, normed=1, alpha=0.8)
 
-    def plotRampStatistics(self,y):
+        # Add a line of best fit, pdf approx
+        y = matplotlib.mlab.normpdf(bins, mu, sigma)
+        l = plt.plot(bins, y, 'r--', linewidth=1)
+        plt.savefig(self.outDir + "capacityStats.png")
+
+    def plotRampStatistics(self, y, rampSum):
         """
         This function takes in a list of ramp values and generaties relevant stats about it
         :param y: 
         :return: 
         """
-        pass
+        mu = rampSum['mean']
+        sigma = rampSum['std']
+        count = rampSum['count']
+        fig = plt.figure()
+        fig.suptitle('RAmp Analysis and Statistics (mu=' + str(int(mu)) + " sig=" + str(int(sigma)) + ")")
+        ax = fig.add_subplot(111)
+        fig.subplots_adjust(top=0.85)
+        ax.set_xlabel(self.label)
+        ax.set_ylabel('Frequency')
+        n, bins, p = plt.hist(y, 80, normed=1, alpha=0.8)
 
-    def plotJointRampCapStats(self, x, y):
+        # Add a line of best fit, pdf approx
+        a = matplotlib.mlab.normpdf(bins, mu, sigma)
+        l = plt.plot(bins, a, 'r--', linewidth=1)
+        plt.savefig(self.outDir + "rampStats.png")
+
+    def plotJointRampCapStats(self, x, y, data):
         """
         Thi function takes both ramp and capacity values at instances in time, and then makes judgements about them
         :param x: 
         :param y: 
         :return: 
         """
-        pass
+        print("\t\tscater")
+        a = sns.regplot(x=self.label, y='ramp', data=data).get_figure()
+        a.savefig(self.outDir + "scatter.png")
+
+        # The first plot is a joint gaussian plot
+        print("\t\tjoint gaussian")
+        g = sns.PairGrid(data, diag_sharey=False)
+        g.map_upper(sns.kdeplot, cmap="Blues_d")
+        g.map_lower(plt.scatter)
+        g.map_diag(sns.kdeplot, lw=3)
+        g.savefig(self.outDir + "jointGaus.png")
+
+        # The next is a a set of kde (contour) plots
+        # todo modify the constant values to be std and mean
+        print("\t\tjointKde1")
+        h = sns.jointplot(x=self.label, y='ramp', data=data, kind="kde", ylim={-80, 80}, xlim={0, 1500},
+                          color='r')  # A kind of heatmap
+        print("\t\tjointKde2")
+        i = sns.jointplot(x=self.label, y='ramp', data=data, kind='hex', ylim={-10, 10}, xlim={0, 40},
+                          color='r')
+        print("\t\tjointGrid")
+        j = sns.JointGrid(x=self.label, y='ramp', data=data, ylim=(-80, 80), xlim=(0, 1000), size=5, ratio=2)
+        j = j.plot_joint(sns.kdeplot, cmap="Reds_d")
+        j = j.plot_marginals(sns.kdeplot, color='r', shade=True)
+
+        h.savefig(self.outDir + "jointKde1.png")
+        i.savefig(self.outDir + "jointKde2.png")
+        j.savefig(self.outDir + "jointKde3.png")
+
+    def plot3dHistogram(self, x, y):
+        '''
+        Please note that the majority of code below was taken from 
+        http://matplotlib.org/examples/mplot3d/hist3d_demo.html
+        :param x: 
+        :param y: 
+        :return: 
+        '''
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+
+        # This example actually counts the number of unique elements.
+        binsOne = sorted(set(x))
+        binsTwo = sorted(set(y))
+        # Just change binsOne and binsTwo to lists.
+        hist, xedges, yedges = np.histogram2d(x, y, bins=[8, 8])
+
+        # The start of each bucket.
+        xpos, ypos = np.meshgrid(xedges[:-1], yedges[:-1])
+
+        xpos = xpos.flatten()
+        ypos = ypos.flatten()
+        zpos = np.zeros_like(xpos)
+
+        # The width of each bucket.
+        dx, dy = np.meshgrid(xedges[1:] - xedges[:-1], yedges[1:] - yedges[:-1])
+
+        dx = dx.flatten()
+        dy = dy.flatten()
+        dz = hist.flatten()
+
+        ax.bar3d(xpos, ypos, zpos, dx, dy, dz, color='b', zsort='average')
+        plt.xlabel(self.label)
+        plt.ylabel('ramp')
+        plt.savefig(self.outDir + "3dHist.png")
 
     def plotGaussianRegression(self, x, y):
         """
@@ -233,8 +334,9 @@ def main():
 
     pathToCSV = "./data/WindGenTotalLoadYTD_2011_1.csv"
     opts = defaultOptions
-    opts['valLabel'] = 'TOTAL WIND GENERATION  IN BPA CONTROL AREA (MW; SCADA 79687)'
+    opts['valLabel'] = 'TOTAL WIND GENERATION'
     opts['dateLabel'] = 'Date/Time'
+    opts['outDir'] = './plots/'
 
     s = StatGen(pathToCSV, opts)
     # s.plotStatistics()
