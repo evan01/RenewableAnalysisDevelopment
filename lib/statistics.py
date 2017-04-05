@@ -6,12 +6,18 @@ from tqdm import tqdm
 import matplotlib
 from matplotlib import pyplot as plt
 import matplotlib.mlab as BIV_NORM
+from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D
 from pandas import TimeGrouper
 import seaborn as sns
+from matplotlib.ticker import LinearLocator, FormatStrFormatter
 import statsmodels.formula.api as sm
 import scipy
+import scipy.optimize as sopt
 import argparse
+import math
+import random
+
 
 '''
 Some useful tutorials for the time series statistics that we are calculating
@@ -133,25 +139,25 @@ class StatGen:
         self.plotRampSeries(times, y)
 
         print("\tplotting cap stats")
-        self.plotCapacityStatistics(x, summaryCap)
+        self.plotCapacityStatistics(x, summaryCap, data)
 
         print("\tplotting ramp series")
-        self.plotRampStatistics(y, summaryRamp)
+        self.plotRampStatistics(y, summaryRamp, data)
 
         print("\tplotting joint ramp/cap series")
         # self.plotJointRampCapStats(x, y, data)
 
         print("\tPlot the 2d histogram")
-        self.plot2dHistogram(x, y)
+        # self.plot2dHistogram(x, y)
 
         print("\tplotting 3d hist")
-        self.plot3dHistogram(x, y)
+        # self.plot3dHistogram(x, y)
 
         print("\tgaus reg")
         self.plotGaussianRegression(x, y)
 
-        print("\tgaus reg")
-        self.plotPolynomialRegression(x, y)
+        print("\tpoly reg")
+        self.plotPolynomialRegression(x, y, data)
 
         print("\tlinear reg")
         self.plotLinearRegression(x, y)
@@ -176,7 +182,7 @@ class StatGen:
         plt.plot(times, y)
         plt.savefig(self.outDir + "rampSeries.png")
 
-    def plotCapacityStatistics(self, x, capSum):
+    def plotCapacityStatistics(self, x, capSum, data):
         """
         This function takes in a list of capacity values, and generates relevant stats about it
         :param x: 
@@ -198,7 +204,7 @@ class StatGen:
         l = plt.plot(bins, y, 'r--', linewidth=1)
         plt.savefig(self.outDir + "capacityStats.png")
 
-    def plotRampStatistics(self, y, rampSum):
+    def plotRampStatistics(self, y, rampSum, data):
         """
         This function takes in a list of ramp values and generaties relevant stats about it
         :param y: 
@@ -208,10 +214,10 @@ class StatGen:
         sigma = rampSum['std']
         count = rampSum['count']
         fig = plt.figure()
-        fig.suptitle('RAmp Analysis and Statistics (mu=' + str(int(mu)) + " sig=" + str(int(sigma)) + ")")
+        fig.suptitle('Ramp Analysis and Statistics (mu=' + str(int(mu)) + " sig=" + str(int(sigma)) + ")")
         ax = fig.add_subplot(111)
         fig.subplots_adjust(top=0.85)
-        ax.set_xlabel(self.label)
+        ax.set_xlabel('Ramp')
         ax.set_ylabel('Frequency')
         n, bins, p = plt.hist(y, 80, normed=1, alpha=0.8)
 
@@ -266,11 +272,14 @@ class StatGen:
         # Plot 2D histogram using pcolor
         # todo, find a way to not the axis values be hard coded
         fig2 = plt.figure()
-        plt.hexbin(x, y, cmap=plt.cm.YlOrRd_r, gridsize=2400)
+        a = plt.hexbin(x, y, cmap=plt.cm.YlOrRd_r, gridsize=1600, mincnt=4, marginals=True)
         fig2.suptitle('2D histogram of Ramp and Capacity')
+        ax = fig2.add_subplot(111)
+        ax.set_xlabel(self.label)
+        ax.set_ylabel('Ramp')
         cb = plt.colorbar()
         cb.set_label('counts')
-        plt.axis([0, 30, -5, 5])
+        plt.axis([0, 30, -10, 10])
 
         fig1.savefig(self.outDir + "2dHist_noheat.png")
         fig2.savefig(self.outDir + "2dHist.png")
@@ -287,7 +296,7 @@ class StatGen:
         ax = fig.add_subplot(111, projection='3d')
 
         # Just change binsOne and binsTwo to lists.
-        hist, xedges, yedges = np.histogram2d(x, y, bins=[8, 8])
+        hist, yedges, xedges = np.histogram2d(x, y, bins=[32, 32], normed=False)
 
         # The start of each bucket.
         xpos, ypos = np.meshgrid(xedges[:-1], yedges[:-1])
@@ -297,13 +306,13 @@ class StatGen:
         zpos = np.zeros_like(xpos)
 
         # The width of each bucket.
-        dx, dy = np.meshgrid(xedges[1:] - xedges[:-1], yedges[1:] - yedges[:-1])
+        dx, dy = np.meshgrid(yedges[1:] - yedges[:-1], xedges[1:] - xedges[:-1])
 
         dx = dx.flatten()
         dy = dy.flatten()
         dz = hist.flatten()
 
-        ax.bar3d(xpos, ypos, zpos, dx, dy, dz, color='b', zsort='average')
+        ax.bar3d(ypos, xpos, zpos, dx, dy, dz, color='b', )
         plt.xlabel(self.label)
         plt.ylabel('ramp')
         plt.savefig(self.outDir + "3dHist.png")
@@ -315,17 +324,55 @@ class StatGen:
         :param y: 
         :return: 
         """
-        pass
 
-    def plotPolynomialRegression(self, x, y):
+        # first thing is to get the x, y, and z coordinates (z is the hist of x,y joint)
+        binSize = 32
+        x_vals = []
+        y_vals = []
+        z_vals = []
+
+        hist, xedges, yedges = np.histogram2d(x, y, bins=[binSize, binSize], normed=False)
+
+        for c_idx in range(binSize):
+            cap = xedges[c_idx]
+            for r_idx in range(binSize):
+                ramp = yedges[r_idx]
+                x_vals.append(cap)
+                y_vals.append(ramp)
+                z_vals.append(hist[c_idx][r_idx])
+
+        self.x = x_vals
+        self.y = y_vals
+        self.z = z_vals
+        X, Y, Z = x_vals, y_vals, z_vals
+
+        fig2 = plt.figure()
+        ax2 = fig2.add_subplot(111, projection='3d')
+        surf = ax2.plot_trisurf(X, Y, Z, cmap=cm.OrRd, linewidth=3, shade=True)
+        # surf = ax2.plot_wireframe(X, Y, Z, cmap=cm.OrRd, linewidth=1)
+        fig2.savefig(self.outDir + "surfacePlot.png")
+
+    def plotPolynomialRegression(self, x, y, data):
         """
         This function takes in ramp and capacity values in instances in time and then tries to find the relationship
         using polynomial regression
+        
+        As of now this doesn't quite work, not sure why not
         :param x: 
         :param y: 
         :return: 
         """
         pass
+        # dist_names = ['gamma', 'beta', 'rayleigh', 'norm', 'pareto']
+        #
+        # for dist_name in dist_names:
+        #     dist = getattr(scipy.stats, dist_name)
+        #     param = dist.fit(x)
+        #     pdf_fitted = dist.pdf(x, *param[:-2], loc=param[-2], scale=param[-1]) * len(x)
+        #     plt.plot(pdf_fitted, label=dist_name)
+        #     plt.xlim(0, 47)
+        # plt.legend(loc='upper right')
+        # plt.show()
 
     def plotLinearRegression(self, x, y):
         """
@@ -335,8 +382,25 @@ class StatGen:
         :param y: 
         :return: 
         """
-        pass
+        return
+        a = sns.residplot(x, y).get_figure()
+        a.savefig(self.outDir + "linReg.png")
 
+        res = sm.OLS(y, x).fit()
+        print(res.summary())
+
+    def gausFunction(self, x, y, xM, xSig, yM, ySig):
+        """
+        We want to approximate and perform regression of a standard gaussian function on our data
+        :param x: 
+        :param y: 
+        :param xM: 
+        :param xSig: 
+        :param yM: 
+        :param ySig: 
+        :return: 
+        """
+        return 3 * math.e ^ (-() / () * () / (2))
 
 def main():
     '''
